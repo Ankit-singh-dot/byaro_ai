@@ -1,0 +1,228 @@
+# ============================================================
+# AstroVault — Docker Compose
+# Full orchestration with isolated networks
+# ============================================================
+
+services:
+  # ─────────────────────────────────────────────────
+  # Next.js Dashboard + API Gateway
+  # ─────────────────────────────────────────────────
+  nextjs-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DOCKER_ENV=true
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}
+      - CLERK_SECRET_KEY=${CLERK_SECRET_KEY:-}
+    networks:
+      - frontend-net
+      - gateway-net
+      - redteam-net
+      - blueteam-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ─────────────────────────────────────────────────
+  # Threat Detection Engine
+  # ─────────────────────────────────────────────────
+  threat-engine:
+    build:
+      context: ./services/threat-engine
+      dockerfile: Dockerfile
+    expose:
+      - "4001"
+    environment:
+      - NODE_ENV=production
+      - PORT=4001
+    networks:
+      - gateway-net
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    user: "1001:1001"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4001/health').then(r => r.ok ? process.exit(0) : process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ─────────────────────────────────────────────────
+  # LLM Proxy Service
+  # ─────────────────────────────────────────────────
+  llm-proxy:
+    build:
+      context: ./services/llm-proxy
+      dockerfile: Dockerfile
+    expose:
+      - "4002"
+    environment:
+      - NODE_ENV=production
+      - PORT=4002
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+    networks:
+      - gateway-net
+      - frontend-net
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    user: "1001:1001"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+
+  # ─────────────────────────────────────────────────
+  # Audit Logging Service
+  # ─────────────────────────────────────────────────
+  audit-service:
+    build:
+      context: ./services/audit-service
+      dockerfile: Dockerfile
+    expose:
+      - "4003"
+    environment:
+      - NODE_ENV=production
+      - PORT=4003
+    networks:
+      - gateway-net
+    volumes:
+      - audit-data:/data
+    restart: unless-stopped
+    user: "1001:1001"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+
+  # ─────────────────────────────────────────────────
+  # Red Team Service
+  # ─────────────────────────────────────────────────
+  red-team-service:
+    build:
+      context: ./services/red-team
+      dockerfile: Dockerfile
+    expose:
+      - "4004"
+    environment:
+      - NODE_ENV=production
+      - PORT=4004
+    networks:
+      - redteam-net
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    user: "1001:1001"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+
+  # ─────────────────────────────────────────────────
+  # Blue Team Service
+  # ─────────────────────────────────────────────────
+  blue-team-service:
+    build:
+      context: ./services/blue-team
+      dockerfile: Dockerfile
+    expose:
+      - "4005"
+    environment:
+      - NODE_ENV=production
+      - PORT=4005
+    networks:
+      - blueteam-net
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    user: "1001:1001"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+
+  # ─────────────────────────────────────────────────
+  # ML Inference Service (Python + Gemini API)
+  # ─────────────────────────────────────────────────
+  ml-inference:
+    build:
+      context: ./services/ml-inference
+      dockerfile: Dockerfile
+    expose:
+      - "4006"
+    environment:
+      - NODE_ENV=production
+      - PORT=4006
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+    networks:
+      - gateway-net
+      - frontend-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1024M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4006/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# ─────────────────────────────────────────────────
+# Network Isolation
+# ─────────────────────────────────────────────────
+#
+# frontend-net: External-facing (Next.js dashboard)
+# gateway-net:  Internal gateway bridge (all services connect here)
+# redteam-net:  Red-team isolated network
+# blueteam-net: Blue-team isolated network
+#
+# KEY ISOLATION GUARANTEES:
+# - Red team and blue team are on separate networks
+# - No direct communication between red-team and blue-team
+# - No direct communication between teams and LLM proxy
+# - All cross-boundary traffic must transit through gateway
+#
+networks:
+  frontend-net:
+    driver: bridge
+  gateway-net:
+    driver: bridge
+    internal: true  # No external access
+  redteam-net:
+    driver: bridge
+    internal: true
+  blueteam-net:
+    driver: bridge
+    internal: true
+
+volumes:
+  audit-data:
+    driver: local
