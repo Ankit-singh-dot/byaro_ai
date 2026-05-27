@@ -1,0 +1,32 @@
+{
+  "experimentalServices": {
+    "frontend": {
+      "routePrefix": "/",
+      "framework": "nextjs"
+    },
+    "audit-service": {
+      "root": "services/audit-service",
+      "routePrefix": "/_/audit-service"
+    },
+    "blue-team": {
+      "root": "services/blue-team",
+      "routePrefix": "/_/blue-team"
+    },
+    "llm-proxy": {
+      "root": "services/llm-proxy",
+      "routePrefix": "/_/llm-proxy"
+    },
+    "ml-inference": {
+      "root": "services/ml-inference",
+      "routePrefix": "/_/ml-inference"
+    },
+    "red-team": {
+      "root": "services/red-team",
+      "routePrefix": "/_/red-team"
+    },
+    "threat-engine": {
+      "root": "services/threat-engine",
+      "routePrefix": "/_/threat-engine"
+    }
+  }
+}
