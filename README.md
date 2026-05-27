@@ -130,3 +130,6 @@ AstroVault is too complex to deploy to serverless Edge providers like Vercel. It
    ```bash
    docker compose up -d --build
    ```
+
+
+5. 
