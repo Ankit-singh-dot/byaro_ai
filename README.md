@@ -1,29 +1,14 @@
-# 🛡️ AstroVault
+# 🛡️ AstroVault: Enterprise AI Safety Validation
 
-AstroVault is an **Enterprise-Grade AI Safety Validation & Adversarial Testing Infrastructure**. It provides a highly secure, zero-trust sandbox environment designed to stress-test Large Language Models (LLMs) against jailbreaks, prompt injections, and data exfiltration attacks.
+AstroVault is a zero-trust, microservice-based adversarial testing infrastructure designed to evaluate Large Language Models (LLMs) against sophisticated Prompt Injections, Jailbreaks, and Data Exfiltration vectors. 
 
-Unlike basic testing scripts, AstroVault is built using a microservice architecture with mathematically rigorous, tamper-evident audit logging and semantic threat analysis powered by Gemini 2.5 Flash.
-
----
-
-## 🌟 Core Features
-
-### 1. Zero-Trust Network Isolation
-AstroVault operates using **four isolated Docker networks** (`frontend-net`, `gateway-net`, `redteam-net`, `blueteam-net`). The Red Team and Blue Team services are physically segregated at the networking layer. They cannot communicate directly; all cross-boundary traffic is forced through a heavily monitored central API Gateway.
-
-### 2. Semantic Threat Engine (Blue Team)
-Legacy security systems rely on brittle regex patterns to catch attacks. AstroVault uses a lightweight Python sidecar (`ml-inference`) to proxy traffic to **Gemini 2.5 Flash**, effectively using an LLM to police another LLM. It instantly categorizes attacks, generates a semantic threat score (0-100), and blocks high-risk prompts before they ever reach the target model.
-
-### 3. Immutable Audit Ledger
-Every prompt submitted, blocked, flagged, or quarantined is recorded in a tamper-evident cryptographic ledger. 
-Using techniques similar to blockchain, every single log entry calculates a **SHA-256 Hash** based on its own data payload combined with the hash of the *previous* entry. If an attacker attempts to edit the JSON database file to cover their tracks, the cryptographic chain instantly breaks and triggers a system-wide alert.
-
-### 4. Enterprise Authentication
-The Mission Control Dashboard is completely locked down using **Clerk**. Unauthenticated traffic is physically blocked via Next.js middleware, ensuring that only authorized security engineers can view the live threat feed and audit chains.
+This document serves as the technical whitepaper for the system architecture, integrity models, and deployment workflows.
 
 ---
 
-## 🏗️ Architecture
+## 🏛️ System Architecture & Zero-Trust Networking
+
+AstroVault completely isolates adversarial testing environments using Docker's internal bridge networking. 
 
 ```text
                  ┌────────────────────┐
@@ -32,73 +17,116 @@ The Mission Control Dashboard is completely locked down using **Clerk**. Unauthe
                            ▼
 ┌────────────────────────────────────────────────────────┐
 │               Next.js Frontend (Port 3000)             │
-│   (Dashboard, Threat Feeds, Audit Integrity Checks)    │
+│                 (frontend-net, gateway-net)            │
 └──────────────────────────┬─────────────────────────────┘
                            ▼
 ┌────────────────────────────────────────────────────────┐
-│             API Gateway & Rate Limiter                 │
+│             LLM Proxy / Gateway (Port 4002)            │
+│  (Rate Limiter, Auth Validation, Traffic Interceptor)  │
 └──────┬───────────────────┬──────────────────────┬──────┘
        ▼                   ▼                      ▼
 ┌────────────┐     ┌──────────────┐     ┌────────────────┐
-│  Red Team  │     │  Blue Team   │     │ Audit Service  │
-│  Console   │     │ (Threat ML)  │     │ (Hash-Chained) │
+│  Red Team  │     │  Threat ML   │     │ Audit Service  │
+│  (Isolated)│     │  (Port 4006) │     │  (Port 4003)   │
 └────────────┘     └──────────────┘     └────────────────┘
 ```
+**Networking Rules:**
+- The Red Team service (`redteam-net`) has absolutely no route to the Blue Team ML classifier (`blueteam-net`). 
+- All traffic must pass through the central LLM Proxy gateway (`gateway-net`).
+- Services are run in `read_only: true` Docker modes with `tmpfs` mounts to prevent container escapes.
 
 ---
 
-## 🚀 Getting Started
+## 🧠 ML Integration & Threat Engine
 
-### Prerequisites
-- Docker and Docker Compose
-- Node.js 20+ (if running the frontend locally without Docker)
-- A [Google Gemini API Key](https://aistudio.google.com/app/apikey)
-- A [Clerk](https://clerk.com/) account for authentication keys
+Initially built using localized PyTorch weights (`safetensors`), AstroVault's Blue Team classifier was migrated to a highly scalable **Semantic Threat Engine** powered by Google's Gemini 2.5 Flash API.
 
-### 1. Environment Setup
-Copy the example environment file and fill in your keys:
-```bash
-cp .env.example .env
-```
-Inside your `.env` file, you must provide:
-- `GEMINI_API_KEY`: Used by the `ml-inference` service to classify threats.
-- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`: Clerk frontend key.
-- `CLERK_SECRET_KEY`: Clerk backend key for middleware protection.
+### How the ML Sidecar Works:
+1. **Interception**: When a prompt is submitted, the API Gateway immediately intercepts the payload and issues a gRPC/HTTP call to the Python `ml-inference` sidecar.
+2. **Zero-Shot Classification**: The sidecar wraps the untrusted prompt in a strict system metaprompt and sends it to the Gemini API. Gemini is instructed to act as an un-jailbreakable cybersecurity analyst.
+3. **Deterministic Output**: Gemini is forced into returning a strict JSON schema containing:
+   - `Threat Score`: (0-100)
+   - `Category`: (e.g., JAILBREAK, PROMPT_INJECTION)
+   - `Confidence`: (Float)
+4. **Action Routing**: Based on the exact threat score, the Gateway automatically routes the request:
+   - `Score 0-49`: **ALLOWED** (Passed to target model)
+   - `Score 50-74`: **FLAGGED** (Passed to model, but logged with high priority)
+   - `Score 75-89`: **BLOCKED** (Target model never sees the prompt)
+   - `Score 90-100`: **QUARANTINED** (Connection dropped, Session instantly locked)
 
-### 2. Build and Run the Stack
-AstroVault is fully containerized. Start the entire microservice architecture with one command:
-```bash
-docker compose up -d --build
-```
-
-The services will be exposed as follows:
-- **Dashboard**: `http://localhost:3000`
-- **Threat Engine**: `http://localhost:4001`
-- **LLM Proxy**: `http://localhost:4002`
-- **Audit Service**: `http://localhost:4003`
+### Heuristic Fallback
+If the ML Inference engine experiences a network failure or latency timeout, AstroVault automatically fails open to a static **Heuristic Regex Engine**. This fallback uses pre-compiled PCRE patterns to catch standard base64 encoding attacks (`JB-001`), system prompt leak attempts (`PI-001`), and role-play overrides (`RO-005`).
 
 ---
 
-## 🧪 Testing the Audit Ledger Integrity
+## ⚔️ Threat Vectors & Attack Types Allowed
 
-AstroVault is built to catch insider threats and database tampering. You can test the SHA-256 cryptographic chain yourself!
+The platform is designed to categorize and defend against 8 primary vectors:
 
-1. **Simulate an attack**: Open the Dashboard and submit an obvious jailbreak attempt. It will be `QUARANTINED`.
-2. **Hack the database**: SSH into the running Docker container and silently edit the log file to cover your tracks using `sed`:
+1. **PROMPT_INJECTION**: Direct attempts to override the system instructions (e.g., "Ignore previous instructions and do X").
+2. **JAILBREAK**: Elaborate role-playing scenarios (e.g., "DAN - Do Anything Now") designed to break the model's ethical boundaries.
+3. **ROLE_OVERRIDE**: Tricking the AI into assuming a privileged role (e.g., "You are the root Linux administrator...").
+4. **DATA_EXFILTRATION**: Forcing the model to leak its hidden system prompt or sensitive API keys hidden in its context window.
+5. **UNSAFE_GENERATION**: Requests for malware creation, phishing templates, or explicit material.
+6. **CONTEXT_EXTRACTION**: Using special tokens (like `<|endoftext|>`) to force the LLM to dump its conversation memory buffer.
+7. **ENCODING_ATTACK**: Using Base64, Hex, or Unicode manipulation to bypass heuristic keyword filters.
+8. **INSTRUCTION_MANIPULATION**: Inserting invisible characters or multi-language combinations to confuse the tokenizer.
+
+---
+
+## ⛓️ The Cryptographic Integrity Model (Audit Ledger)
+
+AstroVault utilizes a tamper-evident, append-only cryptographic ledger to track every event. It is mathematically impossible for an insider to alter a historical log without triggering a system-wide alert.
+
+### The Chaining Algorithm:
+When Event *N* occurs, the Node.js `audit-service` generates a hash using this precise algorithm:
+```javascript
+const entryData = JSON.stringify({ ...payload, id, index, previousHash });
+const currentHash = SHA256(entryData + previousHash);
+```
+Every block's hash relies heavily on the hash of the block before it. 
+
+### The Verification Engine:
+To prevent attackers from using tools like `sed` to silently alter logs directly on the disk, AstroVault does **not** blindly trust the stored hashes.
+
+When an engineer clicks **Verify Chain Integrity**, the backend strips the metadata from every historical block, reconstructs the raw JSON payload in its original insertion order, and mathematically recalculates the SHA-256 hash on-the-fly. If `Recomputed_Hash !== Stored_Hash`, the chain is declared broken, exposing the exact index of the tampered payload.
+
+---
+
+## 🔍 How to Monitor Service Logs
+
+Because AstroVault runs on Docker Compose, all microservice logs are aggregated by the Docker daemon. You can monitor the live traffic flow in real-time.
+
+**View all logs simultaneously:**
+```bash
+docker compose logs -f
+```
+
+**Tail specific services:**
+```bash
+# Watch the ML classification scores in real-time
+docker compose logs -f threat-engine
+
+# Watch the cryptographic ledger appending new blocks
+docker compose logs -f audit-service
+
+# Watch the frontend Next.js server for API Gateway routing
+docker compose logs -f nextjs-app
+```
+
+---
+
+## 🚀 Deployment Operations
+
+AstroVault is too complex to deploy to serverless Edge providers like Vercel. It requires a dedicated VPS (e.g., DigitalOcean, AWS EC2) or a Docker-native platform (e.g., Railway).
+
+1. Clone the repository to your host instance.
+2. Copy the environment variables:
    ```bash
-   docker exec astro-vault-audit-service-1 sed -i 's/QUARANTINED/ALLOWED/g' /data/audit.jsonl
+   cp .env.example .env
    ```
-3. **Verify the breach**: Go to the AstroVault Audit page and click **"Verify Chain Integrity"**. 
-   The Next.js backend will recalculate the hashes of the data payload on-the-fly, realize the raw text doesn't match the historical cryptographic hash, and throw a massive red **CHAIN BROKEN** alert!
-
----
-
-## 🛠️ Tech Stack Best Practices
-
-- **Next.js App Router**: Used heavily for Server Components to keep secrets (like Clerk keys and database logic) out of the client bundle.
-- **Docker Compose Networking**: Uses `internal: true` on Docker networks to prevent the microservices from accessing the outside internet directly.
-- **Pure CSS**: Designed with strict, SOC-grade vanilla CSS and root variables. Avoiding overly neon "AI" aesthetics in favor of a highly professional security design.
-- **Rate Limiting**: Custom token-bucket rate limiters are applied at the middleware level to prevent DDoS attacks against the LLM proxy.
-
-## 📜 License
-AstroVault is proprietary software designed for internal security auditing.
+3. Inject your `GEMINI_API_KEY` and Clerk authentication keys.
+4. Orchestrate the cluster:
+   ```bash
+   docker compose up -d --build
+   ```
