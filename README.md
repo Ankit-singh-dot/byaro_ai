@@ -1,4 +1,4 @@
-# 🛡️ AstroVault: Enterprise AI Safety Validation
+#  AstroVault: Enterprise AI Safety Validation
 
 AstroVault is a zero-trust, microservice-based adversarial testing infrastructure designed to evaluate Large Language Models (LLMs) against sophisticated Prompt Injections, Jailbreaks, and Data Exfiltration vectors. 
 
@@ -6,7 +6,7 @@ This document serves as the technical whitepaper for the system architecture, in
 
 ---
 
-## 🏛️ System Architecture & Zero-Trust Networking
+##  System Architecture & Zero-Trust Networking
 
 AstroVault completely isolates adversarial testing environments using Docker's internal bridge networking. 
 
@@ -37,7 +37,7 @@ AstroVault completely isolates adversarial testing environments using Docker's i
 
 ---
 
-## 🧠 ML Integration & Threat Engine
+##  ML Integration & Threat Engine
 
 Initially built using localized PyTorch weights (`safetensors`), AstroVault's Blue Team classifier was migrated to a highly scalable **Semantic Threat Engine** powered by Google's Gemini 2.5 Flash API.
 
@@ -59,7 +59,7 @@ If the ML Inference engine experiences a network failure or latency timeout, Ast
 
 ---
 
-## ⚔️ Threat Vectors & Attack Types Allowed
+##  Threat Vectors & Attack Types Allowed
 
 The platform is designed to categorize and defend against 8 primary vectors:
 
@@ -74,7 +74,7 @@ The platform is designed to categorize and defend against 8 primary vectors:
 
 ---
 
-## ⛓️ The Cryptographic Integrity Model (Audit Ledger)
+##  The Cryptographic Integrity Model (Audit Ledger)
 
 AstroVault utilizes a tamper-evident, append-only cryptographic ledger to track every event. It is mathematically impossible for an insider to alter a historical log without triggering a system-wide alert.
 
@@ -93,7 +93,7 @@ When an engineer clicks **Verify Chain Integrity**, the backend strips the metad
 
 ---
 
-## 🔍 How to Monitor Service Logs
+##  How to Monitor Service Logs
 
 Because AstroVault runs on Docker Compose, all microservice logs are aggregated by the Docker daemon. You can monitor the live traffic flow in real-time.
 
@@ -116,7 +116,7 @@ docker compose logs -f nextjs-app
 
 ---
 
-## 🚀 Deployment Operations
+##  Deployment Operations
 
 AstroVault is too complex to deploy to serverless Edge providers like Vercel. It requires a dedicated VPS (e.g., DigitalOcean, AWS EC2) or a Docker-native platform (e.g., Railway).
 
